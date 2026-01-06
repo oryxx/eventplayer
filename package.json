@@ -1,6 +1,6 @@
 {
   "name": "eventplayer",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "视频播放器 - 支持播放列表配置和智能播放控制",
   "main": "dist/main.js",
   "scripts": {
