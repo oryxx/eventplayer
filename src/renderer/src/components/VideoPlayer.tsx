@@ -8,7 +8,6 @@ interface VideoPlayerProps {
   isPlaying: boolean;
   onPlay: () => void;
   onPause: () => void;
-  onNext: () => void;
   onVideoEnd: () => void;
   onIndexChange: (index: number) => void;
 }
@@ -19,11 +18,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   isPlaying,
   onPlay,
   onPause,
-  onNext,
   onVideoEnd,
   onIndexChange,
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
+  const [active, setActive] = useState<'A' | 'B'>('A');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [nextRequested, setNextRequested] = useState(false); // 待机视频是否已请求切换到下一个
@@ -40,63 +40,74 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  // 当视频索引变化时，切换到新视频
-  useEffect(() => {
-    if (!currentVideo || !videoRef.current) return;
+  const getActiveVideoEl = () =>
+    active === 'A' ? videoARef.current : videoBRef.current;
+  const getInactiveVideoEl = () =>
+    active === 'A' ? videoBRef.current : videoARef.current;
 
-    const videoElement = videoRef.current;
+  // 当视频索引变化时，预加载到隐藏播放器并无缝切换
+  useEffect(() => {
+    if (!currentVideo) return;
+    const inactiveEl = getInactiveVideoEl();
+    const activeEl = getActiveVideoEl();
+    if (!inactiveEl || !activeEl) return;
     const videoSrc = getVideoSrc(currentVideo.file_path);
-    
-    videoElement.src = videoSrc;
-    
-    // 重置 nextRequested 标记
+    inactiveEl.src = videoSrc;
+    const onReady = () => {
+      setActive(active === 'A' ? 'B' : 'A');
+      if (isPlaying) {
+        inactiveEl.play().catch(console.error);
+      } else {
+        inactiveEl.pause();
+      }
+      activeEl.pause();
+      setDuration(inactiveEl.duration || 0);
+      setCurrentTime(inactiveEl.currentTime || 0);
+      inactiveEl.removeEventListener('loadeddata', onReady);
+      inactiveEl.removeEventListener('canplay', onReady);
+    };
+    inactiveEl.addEventListener('loadeddata', onReady);
+    inactiveEl.addEventListener('canplay', onReady);
     setNextRequested(false);
-    
-    if (isPlaying) {
-      videoElement.play().catch(console.error);
-    }
-    
+    if (!isPlaying) inactiveEl.load();
     // 通知主进程更新分屏窗口
     if (window.electronAPI && window.electronAPI.video) {
       const displayName = currentVideo.display_name || currentVideo.file_name;
-      window.electronAPI.video.updateSplitScreen(videoSrc, displayName).catch((error) => {
+      window.electronAPI.video
+        .updateSplitScreen(videoSrc, displayName)
+        .catch(() => {
         // 忽略错误，可能没有分屏窗口
-      });
+        });
     }
   }, [currentIndex, currentVideo, isPlaying]);
 
   // 播放/暂停控制
   useEffect(() => {
-    if (!currentVideo || !videoRef.current) return;
-    
-    const videoElement = videoRef.current;
-    
+    if (!currentVideo) return;
+    const videoElement = getActiveVideoEl();
+    if (!videoElement) return;
     if (isPlaying) {
       videoElement.play().catch(console.error);
-      
       // 同步分屏窗口播放
       if (window.electronAPI && window.electronAPI.video) {
-        window.electronAPI.video.syncSplitScreenPlayback('play').catch((error) => {
+        window.electronAPI.video.syncSplitScreenPlayback('play').catch(() => {
           // 忽略错误，可能没有分屏窗口
         });
       }
     } else {
       videoElement.pause();
-      
       // 同步分屏窗口暂停
       if (window.electronAPI && window.electronAPI.video) {
-        window.electronAPI.video.syncSplitScreenPlayback('pause').catch((error) => {
+        window.electronAPI.video.syncSplitScreenPlayback('pause').catch(() => {
           // 忽略错误，可能没有分屏窗口
         });
       }
     }
-  }, [isPlaying, currentVideo]);
+  }, [isPlaying, currentVideo, active]);
 
   // 视频结束处理
   const handleVideoEnd = () => {
-    if (!currentVideo || !videoRef.current) return;
-
-    const videoElement = videoRef.current;
+    if (!currentVideo) return;
 
     if (currentVideo.label === 'action') {
       // 动作视频：播放完后自动播放下一个
@@ -120,12 +131,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
       } else {
         // 否则循环播放
-        videoElement.currentTime = 0;
-        videoElement.play().catch(console.error);
-        
+        const el = getActiveVideoEl();
+        if (el) {
+          el.currentTime = 0;
+          el.play().catch(console.error);
+        }
         // 同步分屏窗口循环播放
         if (window.electronAPI && window.electronAPI.video) {
-          window.electronAPI.video.syncSplitScreenPlayback('loop').catch((error) => {
+          window.electronAPI.video.syncSplitScreenPlayback('loop').catch(() => {
             // 忽略错误，可能没有分屏窗口
           });
         }
@@ -177,24 +190,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // 进度更新
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-    }
+    const el = getActiveVideoEl();
+    if (el) setCurrentTime(el.currentTime);
   };
 
   // 视频加载完成
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
-    }
+    const el = getActiveVideoEl();
+    if (el) setDuration(el.duration);
   };
 
   // 进度条点击
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (videoRef.current && duration > 0) {
+    const el = getActiveVideoEl();
+    if (el && duration > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       const percent = (e.clientX - rect.left) / rect.width;
-      videoRef.current.currentTime = percent * duration;
+      el.currentTime = percent * duration;
     }
   };
 
@@ -218,18 +230,28 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     <div className="video-player">
       <div className="video-container">
         <video
-          ref={videoRef}
+          ref={videoARef}
           onEnded={handleVideoEnd}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onError={(e) => {
             console.error('视频加载错误:', e);
-            if (currentVideo) {
-              console.error('文件路径:', currentVideo.file_path);
-              console.error('转换后的URL:', getVideoSrc(currentVideo.file_path));
-            }
           }}
           className="video-element"
+          style={{ opacity: active === 'A' ? 1 : 0 }}
+          playsInline
+        />
+        <video
+          ref={videoBRef}
+          onEnded={handleVideoEnd}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onError={(e) => {
+            console.error('视频加载错误:', e);
+          }}
+          className="video-element"
+          style={{ opacity: active === 'B' ? 1 : 0 }}
+          playsInline
         />
       </div>
 

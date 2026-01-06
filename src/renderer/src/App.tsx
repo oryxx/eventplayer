@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import PlaylistManager from './components/PlaylistManager';
 import VideoPlayer from './components/VideoPlayer';
 import PlaylistEditor from './components/PlaylistEditor';
@@ -110,11 +110,6 @@ function App() {
     setIsPlaying(false);
   };
 
-  const handleNext = () => {
-    if (currentVideoIndex < videos.length - 1) {
-      setCurrentVideoIndex(currentVideoIndex + 1);
-    }
-  };
 
   const handleVideoEnd = () => {
     const currentVideo = videos[currentVideoIndex];
@@ -160,7 +155,6 @@ function App() {
                 isPlaying={isPlaying}
                 onPlay={handlePlay}
                 onPause={handlePause}
-                onNext={handleNext}
                 onVideoEnd={handleVideoEnd}
                 onIndexChange={setCurrentVideoIndex}
               />
@@ -177,4 +171,3 @@ function App() {
 }
 
 export default App;
-

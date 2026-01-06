@@ -95,7 +95,7 @@ const PlaylistEditor: React.FC<PlaylistEditorProps> = ({
     setDraggedIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
@@ -151,7 +151,7 @@ const PlaylistEditor: React.FC<PlaylistEditorProps> = ({
               className="video-item"
               draggable
               onDragStart={() => handleDragStart(index)}
-              onDragOver={(e) => handleDragOver(e, index)}
+              onDragOver={(e) => handleDragOver(e)}
               onDrop={(e) => handleDrop(e, index)}
             >
               <div className="video-item-number">{index + 1}</div>
@@ -210,4 +210,3 @@ const PlaylistEditor: React.FC<PlaylistEditorProps> = ({
 };
 
 export default PlaylistEditor;
-

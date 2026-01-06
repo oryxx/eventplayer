@@ -42,7 +42,7 @@ function createWindow() {
       mainWindow?.loadURL(url).then(() => {
         console.log(`Successfully loaded ${url}`);
         mainWindow?.webContents.openDevTools();
-      }).catch(err => {
+      }).catch(() => {
         console.log(`Failed to load ${url}, retry count: ${retryCount}`);
         // 如果重试次数少于20次（约10秒），继续重试
         if (retryCount < 20) {
@@ -470,5 +470,4 @@ ipcMain.handle('video:syncSplitScreenPlayback', async (_, action: 'play' | 'paus
     return { success: false, error: String(error) };
   }
 });
-
 
