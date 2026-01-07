@@ -29,6 +29,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     syncSplitScreenPlayback: (action: 'play' | 'pause' | 'loop') => 
       ipcRenderer.invoke('video:syncSplitScreenPlayback', action),
   },
+  
+  // 分屏窗口控制
+  splitScreen: {
+    minimize: (windowId: number) => ipcRenderer.invoke(`splitScreen:minimize:${windowId}`),
+    maximize: (windowId: number) => ipcRenderer.invoke(`splitScreen:maximize:${windowId}`),
+    close: (windowId: number) => ipcRenderer.invoke(`splitScreen:close:${windowId}`),
+    move: (windowId: number, deltaX: number, deltaY: number) => 
+      ipcRenderer.invoke(`splitScreen:move:${windowId}`, deltaX, deltaY),
+  },
 });
 
 // TypeScript类型声明
@@ -52,6 +61,12 @@ declare global {
         openSplitScreen: (videoSrc: string, displayName: string) => Promise<{ success: boolean; error?: string }>;
         updateSplitScreen: (videoSrc: string, displayName: string) => Promise<{ success: boolean; error?: string }>;
         syncSplitScreenPlayback: (action: 'play' | 'pause' | 'loop') => Promise<{ success: boolean; error?: string }>;
+      };
+      splitScreen: {
+        minimize: (windowId: number) => Promise<{ success: boolean }>;
+        maximize: (windowId: number) => Promise<{ success: boolean }>;
+        close: (windowId: number) => Promise<{ success: boolean }>;
+        move: (windowId: number, deltaX: number, deltaY: number) => Promise<{ success: boolean }>;
       };
     };
   }

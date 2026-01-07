@@ -303,13 +303,15 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
   try {
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
     
-    // 创建分屏窗口
+    // 创建分屏窗口（无边框，完全去掉顶部）
     const splitWindow = new BrowserWindow({
       width: 1280,
       height: 720,
       title: `分屏: ${displayName}`,
       backgroundColor: '#000000',
+      frame: false, // 无边框窗口，去掉整个顶部（包括标题栏）
       webPreferences: {
+        preload: path.join(__dirname, 'preload.js'), // 使用相同的 preload 脚本
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true
@@ -317,11 +319,12 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
       show: false
     });
 
-    // 在开发模式下，需要通过data URL加载HTML内容
-    // 在生产模式下，使用文件路径
-    if (isDev) {
-      // 开发模式：使用data URL
-      const htmlContent = `
+    // 获取窗口 ID（在创建窗口后）
+    const windowId = splitWindow.id;
+
+    // 统一使用 data URL 加载 HTML 内容（开发和生产模式都使用）
+    // 这样可以避免打包后文件路径的问题
+    const htmlContent = `
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -343,6 +346,8 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
       justify-content: center;
       width: 100vw;
       height: 100vh;
+      -webkit-app-region: drag; /* 整个窗口可拖动 */
+      cursor: default;
     }
     
     video {
@@ -350,19 +355,68 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
       max-height: 100%;
       width: auto;
       height: auto;
+      -webkit-app-region: no-drag; /* 视频区域不可拖动 */
+      pointer-events: auto;
+    }
+    
+    #contextMenu {
+      position: fixed;
+      background: rgba(30, 30, 30, 0.95);
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 4px 0;
+      display: none;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      min-width: 120px;
+    }
+    
+    #contextMenu.menu-visible {
+      display: block;
+    }
+    
+    .menu-item {
+      padding: 8px 16px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      -webkit-app-region: no-drag;
+    }
+    
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .menu-item:active {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .menu-separator {
+      height: 1px;
+      background: #555;
+      margin: 4px 0;
     }
   </style>
 </head>
 <body>
   <video id="video" autoplay></video>
+  <div id="contextMenu">
+    <div class="menu-item" data-action="minimize">最小化</div>
+    <div class="menu-item" data-action="maximize">最大化/还原</div>
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="close">关闭</div>
+  </div>
   
   <script>
     const video = document.getElementById('video');
+    const contextMenu = document.getElementById('contextMenu');
     const videoSrc = decodeURIComponent('${encodeURIComponent(videoSrc)}');
     const displayName = decodeURIComponent('${encodeURIComponent(displayName)}');
+    const windowId = ${windowId};
     
     document.title = '分屏: ' + displayName;
     
+    // 视频加载
     if (videoSrc) {
       video.src = videoSrc;
       
@@ -376,16 +430,52 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
     } else {
       console.error('No video source provided');
     }
+    
+    // 右键菜单
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      contextMenu.style.left = e.clientX + 'px';
+      contextMenu.style.top = e.clientY + 'px';
+      contextMenu.classList.add('menu-visible');
+    });
+    
+    // 点击其他地方关闭菜单
+    document.addEventListener('click', (e) => {
+      if (!contextMenu.contains(e.target)) {
+        contextMenu.classList.remove('menu-visible');
+      }
+    });
+    
+    // 菜单项点击处理
+    contextMenu.addEventListener('click', async (e) => {
+      const action = e.target.getAttribute('data-action');
+      if (!action) return;
+      
+      contextMenu.classList.remove('menu-visible');
+      
+      try {
+        if (window.electronAPI && window.electronAPI.splitScreen) {
+          switch(action) {
+            case 'minimize':
+              await window.electronAPI.splitScreen.minimize(windowId);
+              break;
+            case 'maximize':
+              await window.electronAPI.splitScreen.maximize(windowId);
+              break;
+            case 'close':
+              await window.electronAPI.splitScreen.close(windowId);
+              break;
+          }
+        }
+      } catch (error) {
+        console.error('Window control error:', error);
+      }
+    });
   </script>
 </body>
 </html>`;
-      
-      await splitWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-    } else {
-      // 生产模式：使用文件路径
-      const url = `file://${path.join(__dirname, '../renderer/split-screen.html')}?src=${encodeURIComponent(videoSrc)}&name=${encodeURIComponent(displayName)}`;
-      await splitWindow.loadURL(url);
-    }
+    
+    await splitWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
 
     splitWindow.show();
     splitWindow.focus();
@@ -401,7 +491,33 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
       }
     });
 
-    return { success: true };
+    // 注册窗口控制 IPC 处理器（每个窗口独立）
+    ipcMain.handle(`splitScreen:minimize:${windowId}`, () => {
+      splitWindow.minimize();
+      return { success: true };
+    });
+
+    ipcMain.handle(`splitScreen:maximize:${windowId}`, () => {
+      if (splitWindow.isMaximized()) {
+        splitWindow.unmaximize();
+      } else {
+        splitWindow.maximize();
+      }
+      return { success: true };
+    });
+
+    ipcMain.handle(`splitScreen:close:${windowId}`, () => {
+      splitWindow.close();
+      return { success: true };
+    });
+
+    ipcMain.handle(`splitScreen:move:${windowId}`, (_, deltaX: number, deltaY: number) => {
+      const [x, y] = splitWindow.getPosition();
+      splitWindow.setPosition(x + deltaX, y + deltaY);
+      return { success: true };
+    });
+
+    return { success: true, windowId };
   } catch (error) {
     console.error('Error opening split screen:', error);
     return { success: false, error: String(error) };
