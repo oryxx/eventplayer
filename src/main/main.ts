@@ -351,12 +351,7 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
     }
     
     video {
-      max-width: 100%;
-      max-height: 100%;
-      width: auto;
-      height: auto;
       -webkit-app-region: no-drag; /* 视频区域不可拖动 */
-      pointer-events: auto;
     }
     
     #contextMenu {
@@ -398,8 +393,11 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
     }
   </style>
 </head>
-<body>
-  <video id="video" autoplay></video>
+  <body>
+  <div style="position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;">
+    <video id="videoA" autoplay style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; opacity: 1; transition: opacity 0.3s;"></video>
+    <video id="videoB" autoplay style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; opacity: 0; transition: opacity 0.3s; pointer-events: none;"></video>
+  </div>
   <div id="contextMenu">
     <div class="menu-item" data-action="minimize">最小化</div>
     <div class="menu-item" data-action="maximize">最大化/还原</div>
@@ -408,28 +406,92 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
   </div>
   
   <script>
-    const video = document.getElementById('video');
+    const videoA = document.getElementById('videoA');
+    const videoB = document.getElementById('videoB');
     const contextMenu = document.getElementById('contextMenu');
-    const videoSrc = decodeURIComponent('${encodeURIComponent(videoSrc)}');
-    const displayName = decodeURIComponent('${encodeURIComponent(displayName)}');
+    let activeVideo = 'A';
+    let currentVideoSrc = '';
+    
+    const getActiveVideo = () => activeVideo === 'A' ? videoA : videoB;
+    const getInactiveVideo = () => activeVideo === 'A' ? videoB : videoA;
+    
+    // 初始化视频
+    const initialVideoSrc = decodeURIComponent('${encodeURIComponent(videoSrc)}');
+    const initialDisplayName = decodeURIComponent('${encodeURIComponent(displayName)}');
     const windowId = ${windowId};
     
-    document.title = '分屏: ' + displayName;
+    document.title = '分屏: ' + initialDisplayName;
+    currentVideoSrc = initialVideoSrc;
     
-    // 视频加载
-    if (videoSrc) {
-      video.src = videoSrc;
-      
-      video.addEventListener('loadedmetadata', () => {
+    // 加载初始视频
+    if (initialVideoSrc) {
+      videoA.src = initialVideoSrc;
+      videoA.addEventListener('loadedmetadata', () => {
         console.log('Split screen video loaded');
       });
-      
-      video.addEventListener('error', (e) => {
+      videoA.addEventListener('error', (e) => {
         console.error('Split screen video error:', e);
       });
     } else {
       console.error('No video source provided');
     }
+    
+    // 更新视频函数（用于无缝切换）
+    window.updateSplitScreenVideo = function(newVideoSrc, newDisplayName) {
+      const inactiveVideo = getInactiveVideo();
+      const activeVideoEl = getActiveVideo();
+      
+      if (!inactiveVideo || !activeVideoEl) return;
+      
+      // 如果视频源相同，不需要切换
+      if (newVideoSrc === currentVideoSrc) return;
+      
+      // 将新视频加载到隐藏的播放器
+      inactiveVideo.src = newVideoSrc;
+      currentVideoSrc = newVideoSrc;
+      document.title = '分屏: ' + newDisplayName;
+      
+      const onReady = () => {
+        // 切换显示
+        if (activeVideo === 'A') {
+          videoA.style.opacity = '0';
+          videoA.style.pointerEvents = 'none';
+          videoB.style.opacity = '1';
+          videoB.style.pointerEvents = 'auto';
+          activeVideo = 'B';
+          if (activeVideoEl.paused === false) {
+            videoB.play().catch(err => console.error('播放错误:', err));
+          }
+          videoA.pause();
+        } else {
+          videoB.style.opacity = '0';
+          videoB.style.pointerEvents = 'none';
+          videoA.style.opacity = '1';
+          videoA.style.pointerEvents = 'auto';
+          activeVideo = 'A';
+          if (activeVideoEl.paused === false) {
+            videoA.play().catch(err => console.error('播放错误:', err));
+          }
+          videoB.pause();
+        }
+        
+        inactiveVideo.removeEventListener('loadeddata', onReady);
+        inactiveVideo.removeEventListener('canplay', onReady);
+      };
+      
+      inactiveVideo.addEventListener('loadeddata', onReady);
+      inactiveVideo.addEventListener('canplay', onReady);
+      
+      // 如果当前没有播放，立即加载
+      if (activeVideoEl.paused) {
+        inactiveVideo.load();
+      }
+    };
+    
+    // 获取当前活动的视频元素
+    window.getActiveSplitScreenVideo = function() {
+      return getActiveVideo();
+    };
     
     // 右键菜单
     document.addEventListener('contextmenu', (e) => {
@@ -529,15 +591,14 @@ ipcMain.handle('video:updateSplitScreen', async (_, videoSrc: string, displayNam
     // 向所有分屏窗口发送视频更新
     splitScreenWindows.forEach(splitWindow => {
       if (!splitWindow.isDestroyed()) {
-        // 使用executeJavaScript更新视频源
+        // 使用executeJavaScript更新视频源（使用双视频无缝切换）
         splitWindow.webContents.executeJavaScript(`
           (function() {
-            const video = document.getElementById('video');
-            if (video) {
-              video.src = decodeURIComponent('${encodeURIComponent(videoSrc)}');
-              document.title = '分屏: ' + decodeURIComponent('${encodeURIComponent(displayName)}');
-              video.load();
-              video.play().catch(err => console.error('播放错误:', err));
+            if (window.updateSplitScreenVideo) {
+              window.updateSplitScreenVideo(
+                decodeURIComponent('${encodeURIComponent(videoSrc)}'),
+                decodeURIComponent('${encodeURIComponent(displayName)}')
+              );
             }
           })();
         `).catch(err => {
@@ -560,7 +621,7 @@ ipcMain.handle('video:syncSplitScreenPlayback', async (_, action: 'play' | 'paus
       if (!splitWindow.isDestroyed()) {
         const script = `
           (function() {
-            const video = document.getElementById('video');
+            const video = window.getActiveSplitScreenVideo ? window.getActiveSplitScreenVideo() : document.getElementById('videoA') || document.getElementById('videoB');
             if (video) {
               const action = '${action}';
               if (action === 'play') {
