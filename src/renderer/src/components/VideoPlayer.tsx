@@ -52,6 +52,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const activeEl = getActiveVideoEl();
     if (!inactiveEl || !activeEl) return;
     const videoSrc = getVideoSrc(currentVideo.file_path);
+    
+    // 检查是否已经是相同的视频源，避免不必要的重新加载
+    if (inactiveEl.src === videoSrc || inactiveEl.src === decodeURIComponent(videoSrc.replace('local-video://', ''))) {
+      return; // 如果视频源相同，不重新加载
+    }
+    
     inactiveEl.src = videoSrc;
     const onReady = () => {
       setActive(active === 'A' ? 'B' : 'A');
@@ -69,7 +75,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     inactiveEl.addEventListener('loadeddata', onReady);
     inactiveEl.addEventListener('canplay', onReady);
     setNextRequested(false);
-    if (!isPlaying) inactiveEl.load();
     // 通知主进程更新分屏窗口
     if (window.electronAPI && window.electronAPI.video) {
       const displayName = currentVideo.display_name || currentVideo.file_name;
@@ -79,7 +84,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         // 忽略错误，可能没有分屏窗口
         });
     }
-  }, [currentIndex, currentVideo, isPlaying]);
+  }, [currentIndex, currentVideo]); // 移除 isPlaying 依赖，避免暂停时重新加载视频
 
   // 播放/暂停控制
   useEffect(() => {
@@ -130,18 +135,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onPause();
         }
       } else {
-        // 否则循环播放
+        // 否则循环播放（但需要检查是否正在播放，如果已暂停则不循环）
         const el = getActiveVideoEl();
-        if (el) {
+        if (el && isPlaying) {
           el.currentTime = 0;
           el.play().catch(console.error);
+          // 同步分屏窗口循环播放
+          if (window.electronAPI && window.electronAPI.video) {
+            window.electronAPI.video.syncSplitScreenPlayback('loop').catch(() => {
+              // 忽略错误，可能没有分屏窗口
+            });
+          }
         }
-        // 同步分屏窗口循环播放
-        if (window.electronAPI && window.electronAPI.video) {
-          window.electronAPI.video.syncSplitScreenPlayback('loop').catch(() => {
-            // 忽略错误，可能没有分屏窗口
-          });
-        }
+        // 如果已暂停，不执行循环，保持当前帧
       }
     }
     
@@ -152,16 +158,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleNextClick = () => {
     if (!currentVideo) return;
 
+    // 动作视频时禁用，不处理点击
     if (currentVideo.label === 'action') {
-      // 动作视频：立即切换到下一个
-      if (currentIndex < videos.length - 1) {
-        onIndexChange(currentIndex + 1);
-      }
-    } else {
-      // 待机视频：标记为需要跳转，等待视频播完后切换
-      if (currentIndex < videos.length - 1) {
-        setNextRequested(true);
-      }
+      return;
+    }
+
+    // 待机视频：标记为需要跳转，等待视频播完后切换
+    if (currentVideo.label === 'standby' && currentIndex < videos.length - 1) {
+      setNextRequested(true);
     }
   };
 
@@ -215,6 +219,30 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // 键盘快捷键处理（空格键触发下一个）
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // 如果焦点在输入框等元素上，不处理
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // 空格键触发下一个（仅对待机视频有效）
+      if (e.code === 'Space' && currentVideo && currentVideo.label === 'standby') {
+        e.preventDefault(); // 防止页面滚动
+        // 直接实现下一个逻辑，避免闭包问题
+        if (currentIndex < videos.length - 1) {
+          setNextRequested(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [currentVideo, currentIndex, videos.length]);
 
   if (!currentVideo) {
     return (
@@ -278,7 +306,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <button
             className="control-btn"
             onClick={handleNextClick}
-            disabled={currentIndex >= videos.length - 1 && !nextRequested}
+            disabled={currentVideo.label === 'action' || (currentIndex >= videos.length - 1 && !nextRequested)}
+            title={currentVideo.label === 'action' ? '动作视频自动播放，无需手动切换' : '下一个 (空格键)'}
           >
             下一个
           </button>

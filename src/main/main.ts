@@ -304,12 +304,18 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
     
     // 创建分屏窗口（无边框，完全去掉顶部）
+    // 窗口比例：320:560，初始大小基于这个比例
+    const aspectRatio = 320 / 560; // 约 0.571
+    const initialWidth = 640; // 初始宽度
+    const initialHeight = Math.round(initialWidth / aspectRatio); // 根据比例计算高度
+    
     const splitWindow = new BrowserWindow({
-      width: 1280,
-      height: 720,
+      width: initialWidth,
+      height: initialHeight,
       title: `分屏: ${displayName}`,
       backgroundColor: '#000000',
       frame: false, // 无边框窗口，去掉整个顶部（包括标题栏）
+      resizable: true, // 允许调整大小
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'), // 使用相同的 preload 脚本
         nodeIntegration: false,
@@ -318,6 +324,9 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
       },
       show: false
     });
+    
+    // 设置窗口固定宽高比（320:614）
+    splitWindow.setAspectRatio(aspectRatio);
 
     // 获取窗口 ID（在创建窗口后）
     const windowId = splitWindow.id;
@@ -394,9 +403,9 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
   </style>
 </head>
   <body>
-  <div style="position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;">
-    <video id="videoA" autoplay style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; opacity: 1; transition: opacity 0.3s;"></video>
-    <video id="videoB" autoplay style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; opacity: 0; transition: opacity 0.3s; pointer-events: none;"></video>
+  <div style="position: relative; width: 100vw; height: 100vh; background: #000; display: flex; align-items: flex-end; justify-content: center;">
+    <video id="videoA" autoplay playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 1; transition: opacity 0.3s; object-fit: contain;"></video>
+    <video id="videoB" autoplay playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; pointer-events: none; object-fit: contain;"></video>
   </div>
   <div id="contextMenu">
     <div class="menu-item" data-action="minimize">最小化</div>
