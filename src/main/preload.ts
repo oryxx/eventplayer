@@ -22,8 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id: number) => ipcRenderer.invoke('video:delete', id),
     updateOrder: (playlistId: number, videoOrders: Array<{ id: number; sort_order: number }>) => 
       ipcRenderer.invoke('video:updateOrder', playlistId, videoOrders),
-    openSplitScreen: (videoSrc: string, displayName: string) => 
-      ipcRenderer.invoke('video:openSplitScreen', videoSrc, displayName),
+    openSplitScreen: (videoSrc: string, displayName: string, isPlaying?: boolean, currentTime?: number) => 
+      ipcRenderer.invoke('video:openSplitScreen', videoSrc, displayName, isPlaying, currentTime),
     updateSplitScreen: (videoSrc: string, displayName: string) => 
       ipcRenderer.invoke('video:updateSplitScreen', videoSrc, displayName),
     syncSplitScreenPlayback: (action: 'play' | 'pause' | 'loop') => 
@@ -58,7 +58,7 @@ declare global {
         update: (id: number, updates: { label?: string; sort_order?: number; display_name?: string }) => Promise<{ success: boolean; error?: string }>;
         delete: (id: number) => Promise<{ success: boolean; error?: string }>;
         updateOrder: (playlistId: number, videoOrders: Array<{ id: number; sort_order: number }>) => Promise<{ success: boolean; error?: string }>;
-        openSplitScreen: (videoSrc: string, displayName: string) => Promise<{ success: boolean; error?: string }>;
+        openSplitScreen: (videoSrc: string, displayName: string, isPlaying?: boolean, currentTime?: number) => Promise<{ success: boolean; error?: string }>;
         updateSplitScreen: (videoSrc: string, displayName: string) => Promise<{ success: boolean; error?: string }>;
         syncSplitScreenPlayback: (action: 'play' | 'pause' | 'loop') => Promise<{ success: boolean; error?: string }>;
       };

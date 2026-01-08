@@ -299,7 +299,7 @@ ipcMain.handle('video:updateOrder', async (_, playlistId: number, videoOrders: A
     return { success: false, error: String(error) };
   }
 });
-ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName: string) => {
+ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName: string, isPlaying?: boolean, currentTime?: number) => {
   try {
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
     
@@ -404,8 +404,8 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
 </head>
   <body>
   <div style="position: relative; width: 100vw; height: 100vh; background: #000; display: flex; align-items: flex-end; justify-content: center;">
-    <video id="videoA" autoplay playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 1; transition: opacity 0.3s; object-fit: contain;"></video>
-    <video id="videoB" autoplay playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; pointer-events: none; object-fit: contain;"></video>
+    <video id="videoA" playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 1; transition: opacity 0.3s; object-fit: contain;"></video>
+    <video id="videoB" playsinline style="position: absolute; max-width: 100%; max-height: 100%; width: auto; height: auto; bottom: 0; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; pointer-events: none; object-fit: contain;"></video>
   </div>
   <div id="contextMenu">
     <div class="menu-item" data-action="minimize">最小化</div>
@@ -427,16 +427,34 @@ ipcMain.handle('video:openSplitScreen', async (_, videoSrc: string, displayName:
     // 初始化视频
     const initialVideoSrc = decodeURIComponent('${encodeURIComponent(videoSrc)}');
     const initialDisplayName = decodeURIComponent('${encodeURIComponent(displayName)}');
+    const initialShouldPlay = ${isPlaying !== undefined ? isPlaying : false};
+    const initialCurrentTime = ${currentTime !== undefined ? currentTime : 0};
     const windowId = ${windowId};
     
     document.title = '分屏: ' + initialDisplayName;
     currentVideoSrc = initialVideoSrc;
     
-    // 加载初始视频
+    // 加载初始视频，完全同步主屏状态
     if (initialVideoSrc) {
       videoA.src = initialVideoSrc;
       videoA.addEventListener('loadedmetadata', () => {
         console.log('Split screen video loaded');
+        // 同步主屏的播放时间
+        if (initialCurrentTime > 0 && initialCurrentTime < videoA.duration) {
+          videoA.currentTime = initialCurrentTime;
+        }
+        // 根据主屏的播放状态决定是否播放
+        if (initialShouldPlay) {
+          videoA.play().catch(err => console.error('播放错误:', err));
+        } else {
+          videoA.pause();
+        }
+      });
+      videoA.addEventListener('canplay', () => {
+        // 确保时间同步
+        if (initialCurrentTime > 0 && initialCurrentTime < videoA.duration) {
+          videoA.currentTime = initialCurrentTime;
+        }
       });
       videoA.addEventListener('error', (e) => {
         console.error('Split screen video error:', e);

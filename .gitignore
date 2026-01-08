@@ -8,6 +8,7 @@ dist
 videos/
 data/
 release/win-unpacked/
+release/v0.*/
 release/*.exe
 release/*.dmg
 release/*.AppImage

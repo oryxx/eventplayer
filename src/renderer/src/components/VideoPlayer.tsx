@@ -198,9 +198,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // 获取视频URL
     const videoSrc = getVideoSrc(currentVideo.file_path);
     const displayName = currentVideo.display_name || currentVideo.file_name;
+    // 获取当前播放时间和播放状态，确保分屏完全同步主屏
+    const activeVideoEl = getActiveVideoEl();
+    const currentVideoTime = activeVideoEl ? activeVideoEl.currentTime : 0;
     
-    // 调用主进程创建分屏窗口
-    window.electronAPI.video.openSplitScreen(videoSrc, displayName).catch((error) => {
+    // 调用主进程创建分屏窗口，传递播放状态和播放时间
+    window.electronAPI.video.openSplitScreen(videoSrc, displayName, isPlaying, currentVideoTime).catch((error) => {
       console.error('打开分屏窗口失败:', error);
     });
   };
