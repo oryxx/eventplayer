@@ -1,7 +1,7 @@
 appId: com.eventplayer.app
 productName: EventPlayer
 directories:
-  output: release
+  output: release/v0.1.3
 files:
   - dist/**/*
   - package.json

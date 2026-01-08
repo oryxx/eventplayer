@@ -91,6 +91,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (!currentVideo) return;
     const videoElement = getActiveVideoEl();
     if (!videoElement) return;
+
+    // 检查当前 active 视频的源是否与 currentVideo 匹配
+    // 如果不匹配，说明处于切换过渡期（active 还是旧视频，currentVideo 已更新），此时不应操作旧视频
+    const videoSrc = getVideoSrc(currentVideo.file_path);
+    // 这里的匹配逻辑需要与加载逻辑保持一致，处理 URL 编码和协议
+    const isMatch =
+      videoElement.src === videoSrc ||
+      videoElement.src === decodeURIComponent(videoSrc.replace('local-video://', ''));
+
+    if (!isMatch) {
+      return;
+    }
+
     if (isPlaying) {
       videoElement.play().catch(console.error);
       // 同步分屏窗口播放
